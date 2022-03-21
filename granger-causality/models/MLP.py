@@ -116,3 +116,15 @@ class LeKVAR(nn.Module):
         # Group Lasso on time steps
         reg_time = lam_2 * torch.linalg.norm(self.fc.weight.T.reshape(self.seq_len, -1), dim=(1,))
         return reg_features + reg_time
+
+
+def cmlp_single(input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
+    return CMLP(input_size, seq_len, hidden_dim, n_layers, output_size)
+
+
+def cmlpwf_single(input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
+    return CMLPwFilter(input_size, seq_len, hidden_dim, n_layers, output_size)
+
+
+def lekvar(input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
+    return LeKVAR(input_size, seq_len, hidden_dim, n_layers, output_size)
