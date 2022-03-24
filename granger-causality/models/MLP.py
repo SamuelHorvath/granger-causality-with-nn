@@ -1,12 +1,12 @@
 import torch
 import torch.nn as nn
 
-from .filter import TrainableEltWiseLayer
+from .utils import TrainableEltWiseLayer, activation_helper
 
 
 class CMLP(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, act='relu'):
         super(CMLP, self).__init__()
 
         self.n_layers = n_layers
@@ -23,12 +23,12 @@ class CMLP(nn.Module):
         self.fc = nn.Linear(hidden_dim, output_size)
 
         # activation
-        self.relu = nn.ReLU()
+        self.act = activation_helper(act)
 
     def forward(self, input):
-        out = self.relu(self.linear(input))
+        out = self.act(self.linear(input))
         for layer in self.hidden_s:
-            out = self.relu(layer(out))
+            out = self.act(layer(out))
         out = self.fc(out)
         return out
 
@@ -40,9 +40,26 @@ class CMLP(nn.Module):
         return reg_features + reg_time
 
 
+class CMLPFull(nn.Module):
+
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu'):
+        super(CMLPFull, self).__init__()
+        self.seq_len = seq_len
+        self.input_size = input_size
+        self.networks = nn.ModuleList([
+            CMLP(input_size=input_size, seq_len=seq_len, hidden_dim=hidden_dim,
+                 n_layers=n_layers, act=act)
+            for _ in range(input_size)])
+
+    def forward(self, input):
+        input_flatten = input.reshape(-1, self.seq_len * self.input_size)
+        out = torch.cat([network(input_flatten) for network in self.networks], dim=1)
+        return out
+
+
 class CMLPwFilter(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, act='relu'):
         super(CMLPwFilter, self).__init__()
 
         self.n_layers = n_layers
@@ -50,9 +67,9 @@ class CMLPwFilter(nn.Module):
         self.input_size = input_size
 
         # Filter
-        self.filter = TrainableEltWiseLayer(input_size)
+        self.filter = TrainableEltWiseLayer(input_size * seq_len)
         # Linear Layer Input
-        self.linear = nn.Linear(input_size, hidden_dim)
+        self.linear = nn.Linear(input_size * seq_len, hidden_dim)
 
         # LSTM layers
         self.hidden_s = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(n_layers - 1)])
@@ -61,13 +78,13 @@ class CMLPwFilter(nn.Module):
         self.fc = nn.Linear(hidden_dim, output_size)
 
         # activation
-        self.relu = nn.ReLU()
+        self.act = activation_helper(act)
 
     def forward(self, input):
         filtered_input = self.filter(input)
-        out = self.relu(self.linear(filtered_input))
+        out = self.act(self.linear(filtered_input))
         for layer in self.hidden_s:
-            out = self.relu(layer(out))
+            out = self.act(layer(out))
         out = self.fc(out)
         return out
 
@@ -79,9 +96,26 @@ class CMLPwFilter(nn.Module):
         return reg_features + reg_time
 
 
+class CMLPwFilterFull(nn.Module):
+
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu'):
+        super(CMLPwFilterFull, self).__init__()
+        self.seq_len = seq_len
+        self.input_size = input_size
+        self.networks = nn.ModuleList([
+            CMLPwFilter(input_size=input_size, seq_len=seq_len, hidden_dim=hidden_dim,
+                        n_layers=n_layers, act=act)
+            for _ in range(input_size)])
+
+    def forward(self, input):
+        input_flatten = input.reshape(-1, self.seq_len * self.input_size)
+        out = torch.cat([network(input_flatten) for network in self.networks], dim=1)
+        return out
+
+
 class LeKVAR(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu'):
         super(LeKVAR, self).__init__()
 
         self.n_layers = n_layers
@@ -96,16 +130,15 @@ class LeKVAR(nn.Module):
         self.hidden_s = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(n_layers - 1)])
 
         # Linear Layer ReLU
-        self.fc = nn.Linear(hidden_dim * seq_len, output_size)
+        self.fc = nn.Linear(hidden_dim * seq_len, input_size)
 
         # activation
-        self.relu = nn.ReLU()
+        self.act = activation_helper(act)
 
     def forward(self, input):
-        input_times = input.reshape(-1, self.seq_len, self.input_size)
-        out = self.linear(input_times)
+        out = self.linear(input)
         for layer in self.hidden_s:
-            out = self.relu(out)
+            out = self.act(out)
             out = layer(out)
         out = self.fc(out.reshape(-1, self.seq_len * self.hidden_dim))
         return out
@@ -118,13 +151,13 @@ class LeKVAR(nn.Module):
         return reg_features + reg_time
 
 
-def cmlp_single(input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
-    return CMLP(input_size, seq_len, hidden_dim, n_layers, output_size)
+def cmlp(input_size=10, seq_len=10):
+    return CMLPFull(input_size, seq_len)
 
 
-def cmlpwf_single(input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
-    return CMLPwFilter(input_size, seq_len, hidden_dim, n_layers, output_size)
+def cmlpwf(input_size=10, seq_len=10):
+    return CMLPwFilterFull(input_size, seq_len)
 
 
-def lekvar(input_size=10, seq_len=10, hidden_dim=100, n_layers=2, output_size=1):
-    return LeKVAR(input_size, seq_len, hidden_dim, n_layers, output_size)
+def lekvar(input_size=10, seq_len=10):
+    return LeKVAR(input_size, seq_len)

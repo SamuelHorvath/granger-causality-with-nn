@@ -1,5 +1,7 @@
-from .LSTM import ctlstm_single, clstm_single, ctlstmwf_single
-from .MLP import cmlp_single, cmlpwf_single, lekvar
+from .LSTM import ctlstm, clstm, ctlstmwf
+from .MLP import cmlp, cmlpwf, lekvar
 
-__all__ = ["ctlstm_single", "clstm_single", "ctlstmwf_single",
-           "cmlp_single", "cmlpwf_single", "lekvar"]
+__all__ = ["ctlstm", "clstm", "ctlstmwf",
+           "cmlp", "cmlpwf", "lekvar", "RNN_MODELS"]
+
+RNN_MODELS = ["ctlstm", "clstm", "ctlstmwf"]

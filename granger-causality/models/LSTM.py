@@ -1,15 +1,18 @@
 import torch
 import torch.nn as nn
 
-from .filter import TrainableEltWiseLayer
+from .utils import TrainableEltWiseLayer
 
 
+# TODO: For current solution, hidden state is not passed beyond sequence length
+# for all the LSTM models
 class CLSTM(nn.Module):
 
-    def __init__(self, input_size=10, hidden_dim=100, n_layers=2, output_size=1):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1):
         super(CLSTM, self).__init__()
 
         self.n_layers = n_layers
+        self.hidden_dim = hidden_dim
 
         # Linear Layer
         self.linear = nn.Linear(input_size, hidden_dim)
@@ -20,7 +23,9 @@ class CLSTM(nn.Module):
         # linear
         self.fc = nn.Linear(hidden_dim, output_size)
 
-    def forward(self, input, hidden):
+    def forward(self, input, hidden=None):
+        if hidden is None:
+            hidden = self.init_hidden(input.shape[0], input.device)
         linear_out = self.linear(input)
         lstm_out, hidden = self.lstm(linear_out, hidden)
         # Only use the last output of LSTM
@@ -39,11 +44,12 @@ class CLSTM(nn.Module):
 
 class CTLSTM(nn.Module):
 
-    def __init__(self, input_size=10, hidden_dim=100, n_layers=2, seq_len=10, output_size=1):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1):
         super(CTLSTM, self).__init__()
 
         self.n_layers = n_layers
         self.seq_len = seq_len
+        self.hidden_dim = hidden_dim
 
         # Linear Layer
         self.linear = nn.Linear(input_size, hidden_dim)
@@ -80,11 +86,12 @@ class CTLSTM(nn.Module):
 
 class CTLSTMwFilter(nn.Module):
 
-    def __init__(self, input_size=10, hidden_dim=100, n_layers=2, seq_len=10, output_size=1):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1):
         super(CTLSTMwFilter, self).__init__()
 
         self.n_layers = n_layers
         self.seq_len = seq_len
+        self.hidden_dim = hidden_dim
 
         # Linear Layer
         self.filter = TrainableEltWiseLayer(input_size)
@@ -119,13 +126,37 @@ class CTLSTMwFilter(nn.Module):
         return reg_input + reg_output
 
 
-def clstm_single(input_size=10, hidden_dim=100, n_layers=2):
-    return CLSTM(input_size, hidden_dim, n_layers)
+class CMFull(nn.Module):
+
+    def __init__(self, model, input_size=10, seq_len=10, hidden_dim=10, n_layers=2):
+        super(CMFull, self).__init__()
+        self.seq_len = seq_len
+        self.input_size = input_size
+        self.networks = nn.ModuleList([
+            model(input_size=input_size, seq_len=seq_len,
+                  hidden_dim=hidden_dim, n_layers=n_layers)
+            for _ in range(input_size)])
+
+    def forward(self, input, hidden=None):
+        if hidden is None:
+            hidden = self.init_hidden(input.shape[0], input.device)
+        out_s = [network(input, hidden[i]) for i, network in enumerate(self.networks)]
+        out_x = torch.cat([out[0] for out in out_s], dim=1)
+        hidden = tuple([out[1] for out in out_s])
+        return out_x, hidden
+
+    def init_hidden(self, batch_size, device):
+        hidden = tuple([network.init_hidden(batch_size, device) for network in self.networks])
+        return hidden
 
 
-def ctlstm_single(input_size=10, hidden_dim=100, n_layers=2, seq_len=10):
-    return CTLSTM(input_size, hidden_dim, n_layers, seq_len)
+def clstm(input_size=10, seq_len=10):
+    return CMFull(CLSTM, input_size, seq_len)
 
 
-def ctlstmwf_single(input_size=10, hidden_dim=100, n_layers=2, seq_len=10):
-    return CTLSTMwFilter(input_size, hidden_dim, n_layers, seq_len)
+def ctlstm(input_size=10, seq_len=10):
+    return CMFull(CTLSTM, input_size, seq_len)
+
+
+def ctlstmwf(input_size=10, seq_len=10):
+    return CMFull(CTLSTMwFilter, input_size, seq_len)
