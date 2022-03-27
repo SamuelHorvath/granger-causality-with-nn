@@ -21,6 +21,18 @@ def parse_args(args):
         help="Whether to use gradient clipping"
     )
     parser.add_argument(
+        "--prox",
+        default=False,
+        action='store_true',
+        help="Whether to use prox step"
+    )
+    parser.add_argument(
+        "--gc-penalty",
+        type=float,
+        default=1e-5,
+        help="Group lasso penalty to detect Granger causality"
+    )
+    parser.add_argument(
         "-b", "--batch-size",
         type=int,
         default=32,
@@ -35,7 +47,7 @@ def parse_args(args):
     parser.add_argument(
         '--lr',
         type=float,
-        default=0.01,
+        default=0.001,
         help='initial learning rate (default: 0.01)'
     )
     parser.add_argument(
@@ -49,14 +61,14 @@ def parse_args(args):
         "--optimiser",
         type=str,
         choices=['sgd', 'adam'],
-        default='sgd',
+        default='adam',
         help='Optimiser to use (default: SGD)'
     )
     parser.add_argument(
         '--momentum',
         type=float,
-        default=0.9,
-        help='Momentum (default: 0.9)'
+        default=0.,
+        help='Momentum (default: 0.)'
     )
     parser.add_argument(
         '--weight-decay',

@@ -9,7 +9,7 @@ from opts import parse_args
 from utils.logger import Logger
 from data_funcs.data_loader import load_data
 from utils.model_funcs import get_training_elements, evaluate_model, \
-    get_lr_scheduler, get_optimiser, run_one_epoch
+    get_lr_scheduler, get_optimiser, run_one_epoch, prox_step
 from utils.checkpointing import save_checkpoint
 from utils.utils import create_model_dir, create_metrics_dict, \
     metric_to_dict, init_metrics_meter, extend_metrics_dict
@@ -59,9 +59,11 @@ def main(args):
     args.device = args.gpu[0] if type(args.gpu) == list else args.gpu
 
     # Load data sets
-    trainset, testset = load_data(args.data_path, args.dataset,
+    trainset, testset, GC = load_data(args.data_path, args.dataset,
                                   args.seq_len, args.device)
 
+    # TODO: loaders needs to be fixed for num_workers > 1
+    # It should work, it seems problem is only locally on my machine
     testloader = torch.utils.data.DataLoader(testset,
                                              batch_size=args.batch_size,
                                              # num_workers=4,
@@ -79,7 +81,7 @@ def main(args):
             # persistent_workers=True
         )
 
-        init_and_train_model(args, trainloader, testloader)
+        init_and_train_model(args, trainloader, testloader, GC)
 
     else:  # Evaluation mode
         model, criterion, round = get_training_elements(
@@ -89,13 +91,13 @@ def main(args):
         metrics = evaluate_model(
             model, testloader, criterion, args.device, round,
             print_freq=10, metric_to_optim=args.metric,
-            is_rnn=args.model in RNN_MODELS)
+            is_rnn=args.model in RNN_MODELS, GC=GC)
 
         metrics_dict = create_metrics_dict(metrics)
         logger.info(f'Validation metrics: {metrics_dict}')
 
 
-def init_and_train_model(args, trainloader, testloader):
+def init_and_train_model(args, trainloader, testloader, GC):
     full_metrics = init_metrics_meter()
     model_dir = create_model_dir(args)
     # don't train if setup already exists
@@ -132,8 +134,10 @@ def init_and_train_model(args, trainloader, testloader):
         start = time.time()
         metrics_meter = run_one_epoch(
             model, trainloader, criterion, optimiser, args.device,
-            current_round, is_rnn, args.clip_grad)
-        # TODO: Consider to add prox step here to better detect Granger Causality
+            current_round, is_rnn, args.clip_grad, args.prox, args.gc_penalty)
+        # Prox step to better detect Granger Causality
+        if args.prox:
+            prox_step(model, scheduler, args.gc_penalty)
         extend_metrics_dict(
             full_metrics, metric_to_dict(metrics_meter, i+1, 'train'))
         # wandb.log(metric_to_dict(metrics_meter, i+1, 'train', False))
@@ -145,7 +149,8 @@ def init_and_train_model(args, trainloader, testloader):
         if i % args.eval_every == 0 or i == (args.rounds - 1):
             metrics = evaluate_model(
                 model, testloader, criterion, args.device, current_round,
-                print_freq=10, is_rnn=is_rnn, metric_to_optim=metric_to_optim)
+                print_freq=10, metric_to_optim=metric_to_optim, is_rnn=is_rnn,
+                GC=GC)
             extend_metrics_dict(
                 full_metrics, metric_to_dict(metrics, i+1, 'test'))
             # wandb.log(metric_to_dict(metrics, i+1, 'test', False))
@@ -175,7 +180,14 @@ def init_and_train_model(args, trainloader, testloader):
     #  store the run
     with open(os.path.join(
             create_model_dir(args), 'full_metrics.json'), 'w') as f:
+        del full_metrics['train_GC']
+        del full_metrics['test_GC']
+        del full_metrics['train_GC_full']
+        del full_metrics['test_GC_full']
         json.dump(full_metrics, f, indent=4)
+
+    Logger.get().debug(f'GC model:{model.GC()}')
+    Logger.get().debug(f'GC true:{GC}')
 
 
 if __name__ == "__main__":

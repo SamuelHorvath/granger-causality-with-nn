@@ -6,14 +6,16 @@ class TrainableEltWiseLayer(nn.Module):
 
     def __init__(self, n):
         super(TrainableEltWiseLayer, self).__init__()
-        self.weights = nn.Parameter(torch.Tensor(n))
+        self.weight = nn.Parameter(torch.Tensor(n))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        nn.init.constant_(self.weights.data, 0.)
+        # nn.init.constant_(self.weight.data, 0.)
+        nn.init.constant_(self.weight.data, 1.)
 
     def forward(self, x):
-        return x * torch.sigmoid(self.weights)
+        # return x * torch.sigmoid(self.weight)
+        return x * self.weight
 
 
 def activation_helper(activation):

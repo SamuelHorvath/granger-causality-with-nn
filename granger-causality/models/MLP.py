@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import numpy as np
+
+from torch.linalg import norm
 
 from .utils import TrainableEltWiseLayer, activation_helper
 
@@ -32,12 +35,36 @@ class CMLP(nn.Module):
         out = self.fc(out)
         return out
 
-    def regularize(self, lam_1, lam_2):
+    def regularize(self, lam):
         # Group Lasso on features
-        reg_features = lam_1 * torch.linalg.norm(self.linear.weight.reshape(-1, self.input_size), dim=(0,))
+        reg_features = lam * norm(self.linear.weight.reshape(-1, self.input_size), dim=(0,)).sum()
         # Group Lasso on time steps
-        reg_time = lam_2 * torch.linalg.norm(self.linear.weight.T.reshape(self.seq_len, -1), dim=(1,))
+        reg_time = lam * norm(self.linear.weight.T.reshape(self.seq_len, -1), dim=(1,)).sum()
         return reg_features + reg_time
+
+    @torch.no_grad()
+    def prox(self, lam):
+        # Group Lasso on features
+        shape = self.linear.weight.shape
+        self.linear.weight.data = (nn.ReLU()(
+            1 - lam / norm(self.linear.weight.reshape(-1, self.input_size), dim=(0,), keepdim=True)) *
+            self.linear.weight.reshape(-1, self.input_size)).reshape(shape)
+        # Group Lasso on time steps
+        shape_t = self.linear.weight.T.shape
+        self.linear.weight.data = (nn.ReLU()(
+            1 - lam / norm(self.linear.weight.T.reshape(self.seq_len, -1), dim=(1,), keepdim=True)) *
+            self.linear.weight.T.reshape(self.seq_len, -1)).reshape(shape_t).T
+
+    @torch.no_grad()
+    def GC(self, threshold=False, ignore_lag=True):
+        if ignore_lag:
+            GC = norm(self.linear.weight.reshape(-1, self.input_size), dim=(0,))
+        else:
+            GC = norm(self.linear.weight, dim=(0,))
+        if threshold:
+            return (GC > 0).int().cpu().numpy()
+        else:
+            return GC.cpu().numpy()
 
 
 class CMLPFull(nn.Module):
@@ -55,6 +82,21 @@ class CMLPFull(nn.Module):
         input_flatten = input.reshape(-1, self.seq_len * self.input_size)
         out = torch.cat([network(input_flatten) for network in self.networks], dim=1)
         return out
+
+    def regularize(self, lam):
+        reg_loss = 0
+        for net in self.networks:
+            reg_loss += net.regularize(lam)
+        return reg_loss
+
+    @torch.no_grad()
+    def prox(self, lam):
+        for net in self.networks:
+            net.prox(lam)
+
+    @torch.no_grad()
+    def GC(self, threshold=False, ignore_lag=True):
+        return np.stack([net.GC(threshold, ignore_lag) for net in self.networks])
 
 
 class CMLPwFilter(nn.Module):
@@ -88,12 +130,36 @@ class CMLPwFilter(nn.Module):
         out = self.fc(out)
         return out
 
-    def regularize(self, lam_1, lam_2):
+    def regularize(self, lam):
         # Group Lasso on features
-        reg_features = lam_1 * torch.linalg.norm(self.linear.weight.reshape(-1, self.input_size), dim=(0,))
+        reg_features = lam * norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,)).sum()
         # Group Lasso on time steps
-        reg_time = lam_2 * torch.linalg.norm(self.linear.weight.T.reshape(self.seq_len, -1), dim=(1,))
+        reg_time = lam * norm(self.filter.weight.T.reshape(self.seq_len, -1), dim=(1,)).sum()
         return reg_features + reg_time
+
+    @torch.no_grad()
+    def prox(self, lam):
+        # Group Lasso on features
+        shape = self.filter.weight.shape
+        self.filter.weight.data = (nn.ReLU()(
+            1 - lam / norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,), keepdim=True)) *
+                                   self.filter.weight.reshape(-1, self.input_size)).reshape(shape)
+        # Group Lasso on time steps
+        shape_t = self.filter.weight.T.shape
+        self.filter.weight.data = (nn.ReLU()(
+            1 - lam / norm(self.filter.weight.T.reshape(self.seq_len, -1), dim=(1,), keepdim=True)) *
+                                   self.filter.weight.T.reshape(self.seq_len, -1)).reshape(shape_t).T
+
+    @torch.no_grad()
+    def GC(self, threshold=False, ignore_lag=True):
+        if ignore_lag:
+            GC = norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,))
+        else:
+            GC = norm(self.filter.weight, dim=(0,))
+        if threshold:
+            return (GC > 0).int().cpu().numpy()
+        else:
+            return GC.cpu().numpy()
 
 
 class CMLPwFilterFull(nn.Module):
@@ -112,43 +178,104 @@ class CMLPwFilterFull(nn.Module):
         out = torch.cat([network(input_flatten) for network in self.networks], dim=1)
         return out
 
+    def regularize(self, lam):
+        reg_loss = 0
+        for net in self.networks:
+            reg_loss += net.regularize(lam)
+        return reg_loss
+
+    @torch.no_grad()
+    def prox(self, lam):
+        for net in self.networks:
+            net.prox(lam)
+
+    @torch.no_grad()
+    def GC(self, threshold=False, ignore_lag=True):
+        return np.stack([net.GC(threshold, ignore_lag) for net in self.networks])
+
 
 class LeKVAR(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu'):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu', mode=None):
         super(LeKVAR, self).__init__()
 
         self.n_layers = n_layers
         self.seq_len = seq_len
         self.input_size = input_size
         self.hidden_dim = hidden_dim
+        self.mode = mode
 
-        # Linear Layer Input
-        self.linear = nn.Linear(input_size, hidden_dim)
+        if mode == "nn":
+            # Linear Layer Input
+            self.linear = nn.Linear(1, hidden_dim)
 
-        # LSTM layers
-        self.hidden_s = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(n_layers - 1)])
+            # Middle layers
+            self.hidden_s = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(n_layers - 2)])
 
-        # Linear Layer ReLU
-        self.fc = nn.Linear(hidden_dim * seq_len, input_size)
+            # Last Layer
+            # Could be extended to different output size (>1)
+            self.last = nn.Linear(hidden_dim, 1)
+
+        # Linear Layer
+        self.fc = nn.Linear(input_size * seq_len, input_size)
 
         # activation
         self.act = activation_helper(act)
 
+    def kernel_forward(self, input):
+        if self.mode is None:
+            return input
+
+        if self.mode == 'nn':
+            shape = input.shape
+            single_input = input.reshape((*shape, 1))
+            out = self.act(self.linear(single_input))
+            for layer in self.hidden_s:
+                out = self.act(layer(out))
+            out = self.last(out)
+            return out.reshape(shape)
+
+        if self.mode == 'sq':
+            return input**2
+
     def forward(self, input):
-        out = self.linear(input)
-        for layer in self.hidden_s:
-            out = self.act(out)
-            out = layer(out)
+        out = self.kernel_forward(input)
         out = self.fc(out.reshape(-1, self.seq_len * self.hidden_dim))
         return out
 
-    def regularize(self, lam_1, lam_2):
+    def regularize(self, lam):
         # Group Lasso on features
-        reg_features = lam_1 * torch.linalg.norm(self.fc.weight.reshape(-1, self.input_size), dim=(0,))
+        reg_features = lam * \
+            norm(self.fc.weight.reshape(self.input_size, -1, self.input_size), dim=(1,)).sum()
         # Group Lasso on time steps
-        reg_time = lam_2 * torch.linalg.norm(self.fc.weight.T.reshape(self.seq_len, -1), dim=(1,))
+        reg_time = lam * \
+            norm(self.fc.weight.T.reshape(self.seq_len, -1, self.input_size), dim=(1,)).sum()
         return reg_features + reg_time
+
+    @torch.no_grad()
+    def prox(self, lam):
+        # Group Lasso prox on features
+        shape = self.fc.weight.shape
+        self.fc.weight.data = (nn.ReLU()(
+           1 - lam / norm(self.fc.weight.reshape(self.input_size, -1, self.input_size), dim=(1,), keepdim=True)) *
+           self.fc.weight.reshape(self.input_size, -1, self.input_size)).reshape(shape)
+        # Group Lasso prox time steps
+        shape_t = self.fc.weight.T.shape
+        self.fc.weight.data = (nn.ReLU()(
+            1 - lam / norm(self.fc.weight.T.reshape(self.seq_len, -1, self.input_size), dim=(1,), keepdim=True)) *
+            self.fc.weight.T.reshape(self.seq_len, -1, self.input_size)).reshape(shape_t).T
+
+    @torch.no_grad()
+    def GC(self, threshold=False, ignore_lag=True):
+        if ignore_lag:
+            GC = norm(self.fc.weight.reshape(self.input_size, -1, self.input_size), dim=(1,))
+        else:
+            GC = torch.abs(self.fc.weight)
+            GC = torch.stack([GC[:, self.input_size*i:self.input_size*(i+1)] for i in range(self.seq_len)])
+        if threshold:
+            return (GC > 0).int().cpu().numpy()
+        else:
+            return GC.cpu().numpy()
 
 
 def cmlp(input_size=10, seq_len=10):
@@ -159,5 +286,13 @@ def cmlpwf(input_size=10, seq_len=10):
     return CMLPwFilterFull(input_size, seq_len)
 
 
+def var(input_size=10, seq_len=10):
+    return LeKVAR(input_size, seq_len, mode=None)
+
+
 def lekvar(input_size=10, seq_len=10):
-    return LeKVAR(input_size, seq_len)
+    return LeKVAR(input_size, seq_len, mode='nn')
+
+
+def sqvar(input_size=10, seq_len=10):
+    return LeKVAR(input_size, seq_len, mode='sq')

@@ -17,26 +17,30 @@ def make_var_stationary(beta, radius=0.97):
         return beta
 
 
-def simulate_var(p, T, lag, sparsity=0.2, beta_value=1.0, sd=0.1, seed=0, delay=0, kernel=None):
+def simulate_var(p, T, lag, sparsity=0.2, beta_value=1.0, sd=0.1, seed=0, delay=0, kernel=None,
+                 GC=None, beta=None):
     if seed is not None:
         np.random.seed(seed)
 
     # Set up coefficients and Granger causality ground truth.
-    GC = [np.eye(p, dtype=int) for _ in range(lag)]
-    beta = [np.eye(p) * beta_value for _ in range(lag)]
+    if GC is None:
+        GC = [np.eye(p, dtype=int) for _ in range(lag)]
+        beta = [np.eye(p) * beta_value for _ in range(lag)]
 
-    num_nonzero = int(p * sparsity) - 1
-    for l in range(lag):
-        for i in range(p):
-            choice = np.random.choice(p - 1, size=num_nonzero, replace=False)
-            choice[choice >= i] += 1
-            beta[l][i, choice] = beta_value
-            GC[l][i, choice] = 1
+        num_nonzero = int(p * sparsity) - 1
+        for l in range(lag):
+            for i in range(p):
+                choice = np.random.choice(p - 1, size=num_nonzero, replace=False)
+                choice[choice >= i] += 1
+                beta[l][i, choice] = beta_value
+                GC[l][i, choice] = 1
 
-    beta = np.hstack(beta)
-    beta = make_var_stationary(beta)
+        beta = np.hstack(beta)
+        beta = make_var_stationary(beta)
 
-    GC = np.array(GC)
+        GC = np.array(GC)
+    else:
+        assert beta is not None, 'beta has to be provided.'
 
     # Generate data.
     burn_in = 100

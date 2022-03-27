@@ -32,12 +32,18 @@ def init_metrics_meter(round=None):
     if round is not None:
         metrics_meter = {
             'round': round,
-            'loss': AverageMeter()
+            'loss': AverageMeter(),
+            'roc_auc': 0.,
+            'pr_auc': 0.,
+            'GC': None,
+            'GC_full': 0.
         }
     else:
         metrics_meter = {
             'train_round': [], 'train_loss': [],
+            'train_roc_auc': [], 'train_pr_auc': [], 'train_GC': [], 'train_GC_full': [],
             'test_round': [], 'test_loss': [],
+            'test_roc_auc': [], 'test_pr_auc': [], 'test_GC': [], 'test_GC_full': [],
         }
     return metrics_meter
 
@@ -51,7 +57,10 @@ def create_metrics_dict(metrics):
     for k in metrics:
         if k == 'round':
             continue
-        metrics_dict[k] = metrics[k].get_avg()
+        if isinstance(metrics[k], AverageMeter):
+            metrics_dict[k] = metrics[k].get_avg()
+        else:
+            metrics_dict[k] = metrics[k]
     return metrics_dict
 
 
@@ -93,6 +102,10 @@ def metric_to_dict(metrics_meter, round, preffix='', all_prefix=True):
     out = {
         round_preffix: round,
         preffix + '_loss': metrics_meter['loss'].get_avg(),
+        preffix + '_roc_auc': metrics_meter['roc_auc'],
+        preffix + '_pr_auc': metrics_meter['pr_auc'],
+        preffix + '_GC': metrics_meter['GC'],
+        preffix + '_GC_full': metrics_meter['GC_full'],
     }
     return out
 

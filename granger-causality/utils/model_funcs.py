@@ -3,6 +3,8 @@ from torch import nn
 from torch.nn import DataParallel
 import time
 
+from sklearn import metrics
+
 from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR
 from torch.optim import SGD, Adam, RMSprop
 
@@ -71,7 +73,8 @@ def get_lr_scheduler(optimiser, total_epochs, method='static'):
 
 def run_one_epoch(
         model, train_loader, criterion, optimiser,
-        device, round, is_rnn=False, clip_grad=False, print_freq=10):
+        device, round, is_rnn=False, clip_grad=False, prox=False, lam=0.,
+        print_freq=10):
 
     metrics_meter = init_metrics_meter(round)
     model.train()
@@ -92,7 +95,8 @@ def run_one_epoch(
         inference_duration, backprop_duration, _, _ = \
             forward_backward(
                 model, criterion, input, label, inference_duration,
-                backprop_duration, batch_size, metrics_meter, is_rnn)
+                backprop_duration, batch_size, metrics_meter, is_rnn,
+                prox, lam)
         if is_rnn or clip_grad:
             nn.utils.clip_grad_norm_(model.parameters(), CLIP_RNN_GRAD)
         optimiser.step()
@@ -116,7 +120,7 @@ def get_train_inputs(data, label, model, batch_size, device, is_rnn):
 
 
 def evaluate_model(model, val_loader, criterion, device, round,
-                   print_freq=10, metric_to_optim='loss', is_rnn=False):
+                   print_freq=10, metric_to_optim='loss', is_rnn=False, GC=None):
     metrics_meter = init_metrics_meter(round)
     if is_rnn:
         hidden = model.init_hidden(val_loader.batch_size, device)
@@ -148,14 +152,28 @@ def evaluate_model(model, val_loader, criterion, device, round,
                     dataload_duration, inference_duration,
                     backprop_duration=0., train=False)
 
+    fpr, tpr, _ = metrics.roc_curve(GC.flatten(),  model.GC().flatten())
+    auc_roc = metrics.auc(fpr, tpr)
+
+    auc_pr = metrics.average_precision_score(GC.flatten(),  model.GC().flatten())
+
+    metrics_meter['roc_auc'] = auc_roc
+    metrics_meter['pr_auc'] = auc_pr
+    metrics_meter['GC'] = model.GC().flatten()
+    metrics_meter['GC_full'] = model.GC(ignore_lag=False).flatten()
+
     # Metric for avg/single model(s)
     Logger.get().info(f'{metric_to_optim}:'
-                      f' {metrics_meter[metric_to_optim].get_avg()}')
+                      f' {metrics_meter[metric_to_optim].get_avg()}'
+                      f' ROC (AUC): {auc_roc:.4f},'
+                      f' PR (AUC): {auc_pr:.4f}')
+
     return metrics_meter
 
 
 def forward_backward(model, criterion, input, label, inference_duration,
-                     backprop_duration, batch_size, metrics_meter, is_rnn):
+                     backprop_duration, batch_size, metrics_meter, is_rnn,
+                     prox, lam):
     start_ts = time.time()
     outputs = model(*input)
 
@@ -169,7 +187,8 @@ def forward_backward(model, criterion, input, label, inference_duration,
     inference_duration += single_inference
 
     loss = compute_loss(criterion, output, label)
-    # TODO: consider to add penalty here
+    if not prox:
+        loss += model.regularize(lam=lam)
     loss.backward()
     backprop_duration += time.time() - (start_ts + single_inference)
 
@@ -201,3 +220,8 @@ def get_optimiser(params_to_update, optimiser_name, lr, momentum, weight_decay):
         raise ValueError("optimiser not supported")
 
     return optimiser
+
+
+@torch.no_grad()
+def prox_step(model, scheduler, lam):
+    model.prox(lam * scheduler.get_last_lr()[0])

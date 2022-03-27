@@ -11,6 +11,9 @@ def load_data(path, dataset, seq_len, device):
         train_data = np.load(data_path + '_train.npz')
         x_np = train_data['X']
         trainset = create_dataset_from_ts(x_np, seq_len, device)
+        GC = train_data['GC']
+        GC = (GC.sum(axis=0) > 0).astype(int)
+        GC_time = (GC.sum(axis=0) > 0).astype(int)
 
         test_data = np.load(data_path + '_test.npz')
         x_np = test_data['X']
@@ -18,7 +21,7 @@ def load_data(path, dataset, seq_len, device):
     else:
         raise ValueError(f'{dataset} is unknown dataset name.')
 
-    return trainset, testset
+    return trainset, testset, GC
 
 
 def create_dataset_from_ts(x_np, seq_len, device):
