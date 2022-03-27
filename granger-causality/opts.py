@@ -35,7 +35,7 @@ def parse_args(args):
     parser.add_argument(
         "-b", "--batch-size",
         type=int,
-        default=32,
+        default=128,
         help="Static batch size for local runs"
     )
     parser.add_argument(
