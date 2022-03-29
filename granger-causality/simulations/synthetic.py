@@ -28,10 +28,10 @@ def simulate_var(p, T, lag, sparsity=0.2, beta_value=1.0, sd=0.1, seed=0, delay=
         beta = [np.eye(p) * beta_value for _ in range(lag)]
 
         num_nonzero = int(p * sparsity) - 1
-        for l in range(lag):
-            for i in range(p):
-                choice = np.random.choice(p - 1, size=num_nonzero, replace=False)
-                choice[choice >= i] += 1
+        for i in range(p):
+            choice = np.random.choice(p - 1, size=num_nonzero, replace=False)
+            choice[choice >= i] += 1
+            for l in range(lag):
                 beta[l][i, choice] = beta_value
                 GC[l][i, choice] = 1
 

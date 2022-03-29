@@ -4,9 +4,9 @@ from torch import nn
 
 class TrainableEltWiseLayer(nn.Module):
 
-    def __init__(self, n):
+    def __init__(self, shape):
         super(TrainableEltWiseLayer, self).__init__()
-        self.weight = nn.Parameter(torch.Tensor(n))
+        self.weight = nn.Parameter(torch.ones(shape))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:

@@ -39,8 +39,8 @@ class CMLP(nn.Module):
         # Group Lasso on features
         reg_features = lam * norm(self.linear.weight.reshape(-1, self.input_size), dim=(0,)).sum()
         # Group Lasso on time steps
-        reg_time = lam * norm(self.linear.weight.T.reshape(self.seq_len, -1), dim=(1,)).sum()
-        return reg_features + reg_time
+        reg_lags = lam * norm(self.linear.weight.T.reshape(self.seq_len, -1), dim=(1,)).sum()
+        return reg_features + reg_lags
 
     @torch.no_grad()
     def prox(self, lam):
@@ -108,8 +108,10 @@ class CMLPwFilter(nn.Module):
         self.seq_len = seq_len
         self.input_size = input_size
 
-        # Filter
-        self.filter = TrainableEltWiseLayer(input_size * seq_len)
+        # Filters
+        self.filter_features = TrainableEltWiseLayer(input_size)
+        self.filter_lags = TrainableEltWiseLayer((seq_len, 1))
+
         # Linear Layer Input
         self.linear = nn.Linear(input_size * seq_len, hidden_dim)
 
@@ -123,8 +125,9 @@ class CMLPwFilter(nn.Module):
         self.act = activation_helper(act)
 
     def forward(self, input):
-        filtered_input = self.filter(input)
-        out = self.act(self.linear(filtered_input))
+        filtered_input = self.filter_lags(self.filter_features(input))
+        flatten_input = filtered_input.reshape(-1, self.seq_len * self.input_size)
+        out = self.act(self.linear(flatten_input))
         for layer in self.hidden_s:
             out = self.act(layer(out))
         out = self.fc(out)
@@ -132,30 +135,38 @@ class CMLPwFilter(nn.Module):
 
     def regularize(self, lam):
         # Group Lasso on features
-        reg_features = lam * norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,)).sum()
+        # reg_features = lam * norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,)).sum()
+        reg_features = lam * torch.abs(self.filter_features.weight).sum()
         # Group Lasso on time steps
-        reg_time = lam * norm(self.filter.weight.T.reshape(self.seq_len, -1), dim=(1,)).sum()
-        return reg_features + reg_time
+        # reg_lags = lam * norm(self.filter.weight.T.reshape(self.seq_len, -1), dim=(1,)).sum()
+        reg_lags = lam * torch.abs(self.filter_lags.weight).sum()
+        return reg_features + reg_lags
 
     @torch.no_grad()
     def prox(self, lam):
         # Group Lasso on features
-        shape = self.filter.weight.shape
-        self.filter.weight.data = (nn.ReLU()(
-            1 - lam / norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,), keepdim=True)) *
-                                   self.filter.weight.reshape(-1, self.input_size)).reshape(shape)
+        # shape = self.filter.weight.shape
+        # self.filter.weight.data = (nn.ReLU()(
+        #     1 - lam / norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,), keepdim=True)) *
+        #                            self.filter.weight.reshape(-1, self.input_size)).reshape(shape)
+        self.filter_features.weight.data = nn.ReLU()(
+            1 - lam / torch.abs(self.filter_time.weight)) * self.filter_features.weight
         # Group Lasso on time steps
-        shape_t = self.filter.weight.T.shape
-        self.filter.weight.data = (nn.ReLU()(
-            1 - lam / norm(self.filter.weight.T.reshape(self.seq_len, -1), dim=(1,), keepdim=True)) *
-                                   self.filter.weight.T.reshape(self.seq_len, -1)).reshape(shape_t).T
+        # shape_t = self.filter.weight.T.shape
+        # self.filter.weight.data = (nn.ReLU()(
+        #     1 - lam / norm(self.filter.weight.T.reshape(self.seq_len, -1), dim=(1,), keepdim=True)) *
+        #                            self.filter.weight.T.reshape(self.seq_len, -1)).reshape(shape_t).T
+        self.filter_lags.weight.data = nn.ReLU()(
+            1 - lam / torch.abs(self.filter_lags.weight)) * self.filter_time.weight
 
     @torch.no_grad()
     def GC(self, threshold=False, ignore_lag=True):
         if ignore_lag:
-            GC = norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,))
+            # GC = norm(self.filter.weight.reshape(-1, self.input_size), dim=(0,))
+            GC = torch.abs(self.filter_features.weight)
         else:
-            GC = norm(self.filter.weight, dim=(0,))
+            # GC = norm(self.filter.weight, dim=(0,))
+            GC = torch.abs(self.filter_lags.weight)
         if threshold:
             return (GC > 0).int().cpu().numpy()
         else:
@@ -174,8 +185,7 @@ class CMLPwFilterFull(nn.Module):
             for _ in range(input_size)])
 
     def forward(self, input):
-        input_flatten = input.reshape(-1, self.seq_len * self.input_size)
-        out = torch.cat([network(input_flatten) for network in self.networks], dim=1)
+        out = torch.cat([network(input) for network in self.networks], dim=1)
         return out
 
     def regularize(self, lam):
@@ -248,9 +258,9 @@ class LeKVAR(nn.Module):
         reg_features = lam * \
             norm(self.fc.weight.reshape(self.input_size, -1, self.input_size), dim=(1,)).sum()
         # Group Lasso on time steps
-        reg_time = lam * \
+        reg_lags = lam * \
             norm(self.fc.weight.T.reshape(self.seq_len, -1, self.input_size), dim=(1,)).sum()
-        return reg_features + reg_time
+        return reg_features + reg_lags
 
     @torch.no_grad()
     def prox(self, lam):
