@@ -126,7 +126,7 @@ def parse_args(args):
     parser.add_argument(
         "--gpu",
         type=str,
-        default="0",
+        default="1",
         help="Define on which GPU to run the model"
              " (comma-separated for multiple). If -1, use CPU."
     )

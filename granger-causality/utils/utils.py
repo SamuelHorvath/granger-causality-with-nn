@@ -72,7 +72,7 @@ def create_model_dir(args, lr=True):
         args.checkpoint_dir, model_dataset, run_id)
     if lr:
         run_hp = os.path.join(
-            f"lr={str(args.lr)}",
+            f"lr={str(args.lr)}-gc_pen={str(args.gc_penalty)}",
             f"seed={str(args.manual_seed)}")
         model_dir = os.path.join(model_dir, run_hp)
 
