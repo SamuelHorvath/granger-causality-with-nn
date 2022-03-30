@@ -124,9 +124,15 @@ class CMLPwFilter(nn.Module):
         # activation
         self.act = activation_helper(act)
 
+        # linear layer norm
+        with torch.no_grad():
+            self.norm_const = norm(self.linear.weight).detach()
+
     def forward(self, input):
         filtered_input = self.filter_lags(self.filter_features(input))
-        flatten_input = filtered_input.reshape(-1, self.seq_len * self.input_size)
+        # normalized weight for linear
+        normalized_input = self.norm_const / norm(self.linear.weight) * filtered_input
+        flatten_input = normalized_input.reshape(-1, self.seq_len * self.input_size)
         out = self.act(self.linear(flatten_input))
         for layer in self.hidden_s:
             out = self.act(layer(out))

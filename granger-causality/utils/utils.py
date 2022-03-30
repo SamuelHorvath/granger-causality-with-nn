@@ -120,7 +120,7 @@ def get_key(train=True):
     return 'train_' if train else 'test_'
 
 
-def get_best_lr_and_metric(args, last=True):
+def get_best_lr_and_metric(args, last=False):
     best_arg, best_lookup = (np.nanargmin, np.nanmin) \
         if args.metric in ['loss'] else (np.nanargmax, np.nanmax)
     key = get_key(args.train_metric)
@@ -152,14 +152,14 @@ def get_best_lr_and_metric(args, last=True):
     return best_lr, best_metric, lr_dirs
 
 
-def get_best_runs(args_exp, last=True):
+def get_best_runs(args_exp):
     model_dir_no_lr = create_model_dir(args_exp, lr=False)
-    best_lr, _, _ = get_best_lr_and_metric(args_exp, last=last)
+    best_lr, _, _ = get_best_lr_and_metric(args_exp, last=False)
     model_dir_lr = os.path.join(model_dir_no_lr, best_lr)
-    json_dir = 'full_metrics.json'
+    json_dir = 'best_metrics.json'
     metric_dirs = glob.glob(model_dir_lr + '/*/' + json_dir)
 
-    print(f'Best_lr: {best_lr}')
+    # print(f'Best_lr: {best_lr}')
     with open(metric_dirs[0]) as json_file:
         metric = json.load(json_file)
     runs = [metric]
@@ -168,6 +168,6 @@ def get_best_runs(args_exp, last=True):
         with open(metric_dir) as json_file:
             metric = json.load(json_file)
         # ignores failed runs
-        if not np.isnan(metric[get_key(train=True) + 'loss']).any():
+        if not np.isnan(metric['loss']).any():
             runs.append(metric)
     return runs

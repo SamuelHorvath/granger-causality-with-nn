@@ -155,11 +155,17 @@ class CTLSTMwFilter(nn.Module):
         # linear
         self.fc = nn.Linear(hidden_dim * seq_len, output_size)
 
+        # linear layer norm
+        with torch.no_grad():
+            self.norm_const = norm(self.lstm.weight_hh_l0).detach()
+
     def forward(self, input, hidden=None):
         if hidden is None:
             hidden = self.init_hidden(input.shape[0], input.device)
         filtered_input = self.filter_lags(self.filter_features(input))
-        lstm_out, hidden = self.lstm(filtered_input, hidden)
+        # normalized weight for input weight of lstm
+        normalized_input = self.norm_const / norm(self.lstm.weight_hh_l0) * filtered_input
+        lstm_out, hidden = self.lstm(normalized_input, hidden)
         out = self.fc(lstm_out.reshape(-1, self.seq_len * self.hidden_dim))
         return out, hidden
 
