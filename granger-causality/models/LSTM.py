@@ -8,30 +8,80 @@ from .utils import TrainableEltWiseLayer
 
 # TODO: For the current solution, hidden state is not passed beyond sequence length
 # for all the LSTM models
-class CLSTM(nn.Module):
+# class CLSTM(nn.Module):
+#
+#     def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, **kwargs):
+#         super(CLSTM, self).__init__()
+#
+#         self.n_layers = n_layers
+#         self.hidden_dim = hidden_dim
+#
+#         # Linear Layer
+#         self.linear = nn.Linear(input_size, hidden_dim)
+#
+#         # LSTM layers
+#         self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True, num_layers=n_layers)
+#
+#         # linear
+#         self.fc = nn.Linear(hidden_dim, output_size)
+#
+#     def forward(self, input, hidden=None):
+#         if hidden is None:
+#             hidden = self.init_hidden(input.shape[0], input.device)
+#         linear_out = self.linear(input)
+#         lstm_out, hidden = self.lstm(linear_out, hidden)
+#         # Only use the last output of LSTM
+#         out = self.fc(lstm_out[:, -1, :].reshape(-1, self.hidden_dim))
+#         return out, hidden
+#
+#     def init_hidden(self, batch_size, device):
+#         hidden = (torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device),
+#                   torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device))
+#         return hidden
+#
+#     def regularize(self, lam):
+#         # Group Lasso on inputs
+#         return lam * norm(self.linear.weight, dim=(0, )).sum()
+#
+#     @torch.no_grad()
+#     def prox(self, lam):
+#         # Group Lasso on inputs
+#         self.linear.weight.data = (nn.ReLU()(
+#             1 - lam / norm(self.linear.weight, dim=(0, )), keepdim=True)) * self.linear.weight
+#
+#     @torch.no_grad()
+#     def GC(self, threshold=False, ignore_lag=True):
+#         if ignore_lag:
+#             GC = norm(self.linear.weight, dim=(0, ))
+#         else:
+#             return np.array([-1.])
+#         if threshold:
+#             return (GC > 0).int().cpu().numpy()
+#         else:
+#             return GC.cpu().numpy()
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, **kwargs):
-        super(CLSTM, self).__init__()
+
+class CTLSTM(nn.Module):
+
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, lag_pen=False):
+        super(CTLSTM, self).__init__()
 
         self.n_layers = n_layers
+        self.seq_len = seq_len
         self.hidden_dim = hidden_dim
-
-        # Linear Layer
-        self.linear = nn.Linear(input_size, hidden_dim)
+        self.lag_pen = lag_pen
 
         # LSTM layers
-        self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True, num_layers=n_layers)
+        self.lstm = nn.LSTM(input_size, hidden_dim, batch_first=True, num_layers=self.n_layers)
 
         # linear
-        self.fc = nn.Linear(hidden_dim, output_size)
+        self.fc = nn.Linear(hidden_dim * seq_len, output_size)
 
-    def forward(self, input, hidden=None):
+    def forward(self, input, hidden):
         if hidden is None:
             hidden = self.init_hidden(input.shape[0], input.device)
-        linear_out = self.linear(input)
-        lstm_out, hidden = self.lstm(linear_out, hidden)
-        # Only use the last output of LSTM
-        out = self.fc(lstm_out[:, -1, :].reshape(-1, self.hidden_dim))
+        lstm_out, hidden = self.lstm(input, hidden)
+        out = self.fc(lstm_out.reshape(-1, self.seq_len * self.hidden_dim))
         return out, hidden
 
     def init_hidden(self, batch_size, device):
@@ -41,91 +91,40 @@ class CLSTM(nn.Module):
 
     def regularize(self, lam):
         # Group Lasso on inputs
-        return lam * norm(self.linear.weight, dim=(0, )).sum()
-
-    @torch.no_grad()
-    def prox(self, lam):
-        # Group Lasso on inputs
-        self.linear.weight.data = (nn.ReLU()(
-            1 - lam / norm(self.linear.weight, dim=(0, )), keepdim=True)) * self.linear.weight
-
-    @torch.no_grad()
-    def GC(self, threshold=False, ignore_lag=True):
-        if ignore_lag:
-            GC = norm(self.linear.weight, dim=(0, ))
-        else:
-            return np.array([-1.])
-        if threshold:
-            return (GC > 0).int().cpu().numpy()
-        else:
-            return GC.cpu().numpy()
-
-
-class CTLSTM(nn.Module):
-
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, lag_pen=False):
-        super(CTLSTM, self).__init__()
-
-        self.n_h_layers = n_layers - 1
-        self.seq_len = seq_len
-        self.hidden_dim = hidden_dim
-        self.lag_pen = lag_pen
-
-        # Linear Layer
-        self.linear = nn.Linear(input_size, hidden_dim)
-
-        # LSTM layers
-        self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True, num_layers=self.n_h_layers)
-
-        # linear
-        self.fc = nn.Linear(hidden_dim * seq_len, output_size)
-
-    def forward(self, input, hidden):
-        if hidden is None:
-            hidden = self.init_hidden(input.shape[0], input.device)
-        linear_out = self.linear(input)
-        lstm_out, hidden = self.lstm(linear_out, hidden)
-        out = self.fc(lstm_out.reshape(-1, self.seq_len * self.hidden_dim))
-        return out, hidden
-
-    def init_hidden(self, batch_size, device):
-        hidden = (torch.zeros(self.n_h_layers, batch_size, self.hidden_dim).to(device),
-                  torch.zeros(self.n_h_layers, batch_size, self.hidden_dim).to(device))
-        return hidden
-
-    def regularize(self, lam):
-        # Group Lasso on inputs
-        reg_inputs = lam * norm(self.linear.weight, dim=(0, )).sum()
+        reg_inputs = lam * norm(self.lstm.weight_hh_l0, dim=(0, )).sum()
         # Hierarchical Group Lasso on outputs
         reg_output = 0.
         if self.lag_pen:
-            lam_pen = lam * 30
-            for k in range(self.seq_len):
-                lower = k * self.hidden_dim
-                reg_output += lam_pen * norm(self.fc.weight[:, lower:])
+            raise ValueError("Needs to be reimplemented for LSTMs")
+            # lam_pen = lam * 30
+            # for k in range(self.seq_len):
+            #     lower = k * self.hidden_dim
+            #     reg_output += lam_pen * norm(self.fc.weight[:, lower:])
         return reg_inputs + reg_output
 
     @torch.no_grad()
     def prox(self, lam):
         # Group Lasso on inputs
-        self.linear.weight.data = nn.ReLU()(
-            1 - lam / norm(self.linear.weight, dim=(0, ), keepdim=True)) * self.linear.weight
+        self.lstm.weight_hh_l0data = nn.ReLU()(
+            1 - lam / norm(self.lstm.weight_hh_l0, dim=(0, ), keepdim=True)) * self.lstm.weight_hh_l0
 
         # Hierarchical Group Lasso on outputs
         if self.lag_pen:
-            for k in range(1, self.seq_len + 1):
-                lower = k * self.hidden_dim
-                self.fc.weight[:, lower:].data = nn.ReLU()(
-                    1 - lam / norm(self.fc.weight[:, lower:], keepdim=True)) * self.fc.weight[:, lower:]
+            raise ValueError("Needs to be reimplemented for LSTMs")
+            # for k in range(1, self.seq_len + 1):
+            #     lower = k * self.hidden_dim
+            #     self.lstm.weight_hh_l0[:, lower:].data = nn.ReLU()(
+            #         1 - lam / norm(self.lstm.weight_hh_l0[:, lower:], keepdim=True)) * self.fc.weight[:, lower:]
 
     @torch.no_grad()
     def GC(self, threshold=False, ignore_lag=True):
         if ignore_lag:
-            GC = norm(self.linear.weight, dim=(0, ))
+            GC = norm(self.lstm.weight_hh_l0, dim=(0, ))
         else:
             if self.lag_pen:
-                GC = torch.stack([norm(self.fc.weight[:, i * self.hidden_dim: (i+1) * self.hidden_dim])
-                                  for i in range(self.seq_len)])
+                raise ValueError("Needs to be reimplemented for LSTMs")
+                # GC = torch.stack([norm(self.lstm.weight_hh_l0[:, i * self.hidden_dim: (i+1) * self.hidden_dim])
+                #                   for i in range(self.seq_len)])
                 # GC = norm(self.fc.weight.T.reshape(self.seq_len, self.hidden_dim), dim=(1,))
             else:
                 return np.array([-1.])
@@ -257,8 +256,8 @@ class CMFull(nn.Module):
         return np.stack([net.GC(threshold, ignore_lag) for net in self.networks])
 
 
-def clstm(input_size=10, seq_len=10):
-    return CMFull(CLSTM, input_size, seq_len)
+# def clstm(input_size=10, seq_len=10):
+#     return CMFull(CLSTM, input_size, seq_len)
 
 
 def ctlstm(input_size=10, seq_len=10):

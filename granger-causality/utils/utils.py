@@ -159,7 +159,7 @@ def get_best_runs(args_exp):
     json_dir = 'best_metrics.json'
     metric_dirs = glob.glob(model_dir_lr + '/*/' + json_dir)
 
-    # print(f'Best_lr: {best_lr}')
+    print(f'Method: {args_exp.model} best_params: {best_lr}')
     with open(metric_dirs[0]) as json_file:
         metric = json.load(json_file)
     runs = [metric]
