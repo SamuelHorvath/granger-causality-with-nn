@@ -232,6 +232,10 @@ class LeKVAR(nn.Module):
             # Could be extended to different output size (>1)
             self.last = nn.Linear(hidden_dim, 1)
 
+            # linear layer norm
+            with torch.no_grad():
+                self.norm_const = norm(self.last.weight).detach()
+
         # Linear Layer
         self.fc = nn.Linear(input_size * seq_len, input_size)
 
@@ -248,6 +252,7 @@ class LeKVAR(nn.Module):
             out = self.act(self.linear(single_input))
             for layer in self.hidden_s:
                 out = self.act(layer(out))
+            out = self.norm_const / norm(self.last.weight) * out
             out = self.last(out)
             return out.reshape(shape)
 
