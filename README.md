@@ -1,1 +1,1 @@
-# granger-causality-for-time-series-with-nn
+# granger-causality-with-nn
