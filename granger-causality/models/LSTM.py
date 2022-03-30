@@ -91,7 +91,7 @@ class CTLSTM(nn.Module):
 
     def regularize(self, lam):
         # Group Lasso on inputs
-        reg_inputs = lam * norm(self.lstm.weight_hh_l0, dim=(0, )).sum()
+        reg_inputs = lam * norm(self.lstm.weight_ih_l0, dim=(0, )).sum()
         # Hierarchical Group Lasso on outputs
         reg_output = 0.
         if self.lag_pen:
@@ -105,8 +105,8 @@ class CTLSTM(nn.Module):
     @torch.no_grad()
     def prox(self, lam):
         # Group Lasso on inputs
-        self.lstm.weight_hh_l0data = nn.ReLU()(
-            1 - lam / norm(self.lstm.weight_hh_l0, dim=(0, ), keepdim=True)) * self.lstm.weight_hh_l0
+        self.lstm.weight_ih_l0.data = nn.ReLU()(
+            1 - lam / norm(self.lstm.weight_ih_l0, dim=(0, ), keepdim=True)) * self.lstm.weight_ih_l0
 
         # Hierarchical Group Lasso on outputs
         if self.lag_pen:
@@ -119,7 +119,7 @@ class CTLSTM(nn.Module):
     @torch.no_grad()
     def GC(self, threshold=False, ignore_lag=True):
         if ignore_lag:
-            GC = norm(self.lstm.weight_hh_l0, dim=(0, ))
+            GC = norm(self.lstm.weight_ih_l0, dim=(0, ))
         else:
             if self.lag_pen:
                 raise ValueError("Needs to be reimplemented for LSTMs")
@@ -156,14 +156,14 @@ class CTLSTMwFilter(nn.Module):
 
         # linear layer norm
         with torch.no_grad():
-            self.norm_const = norm(self.lstm.weight_hh_l0).detach()
+            self.norm_const = norm(self.lstm.weight_ih_l0).detach()
 
     def forward(self, input, hidden=None):
         if hidden is None:
             hidden = self.init_hidden(input.shape[0], input.device)
         filtered_input = self.filter_lags(self.filter_features(input))
         # normalized weight for input weight of lstm
-        normalized_input = self.norm_const / norm(self.lstm.weight_hh_l0) * filtered_input
+        normalized_input = self.norm_const / norm(self.lstm.weight_ih_l0) * filtered_input
         lstm_out, hidden = self.lstm(normalized_input, hidden)
         out = self.fc(lstm_out.reshape(-1, self.seq_len * self.hidden_dim))
         return out, hidden
