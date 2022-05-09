@@ -266,3 +266,11 @@ def ctlstm(input_size=10, seq_len=10):
 
 def ctlstmwf(input_size=10, seq_len=10):
     return CMFull(CTLSTMwFilter, input_size, seq_len)
+
+
+def ctlstm_s(input_size=10, seq_len=10):
+    return CMFull(CTLSTM, input_size, seq_len, n_layers=1)
+
+
+def ctlstmwf_s(input_size=10, seq_len=10):
+    return CMFull(CTLSTMwFilter, input_size, seq_len, n_layers=1)

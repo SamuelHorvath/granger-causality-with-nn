@@ -1,7 +1,9 @@
-from .LSTM import ctlstm, ctlstmwf
-from .MLP import cmlp, cmlpwf, lekvar, var, sqvar
+from .LSTM import ctlstm, ctlstmwf, ctlstm_s, ctlstmwf_s
+from .MLP import cmlp, cmlpwf, lekvar, var, sqvar, cmlp_s,  cmlpwf_s, lekvar_s
 
-__all__ = ["ctlstm", "ctlstmwf",
-           "cmlp", "cmlpwf", "lekvar", "var", "sqvar", "RNN_MODELS"]
+__all__ = ["ctlstm", "ctlstmwf", "ctlstm_s", "ctlstmwf_s",
+           "cmlp", "cmlpwf", "lekvar", "var", "sqvar",
+           "cmlp_s",  "cmlpwf_s", "lekvar_s",
+           "RNN_MODELS"]
 
-RNN_MODELS = ["ctlstm", "clstm", "ctlstmwf"]
+RNN_MODELS = ["ctlstm", "clstm", "ctlstmwf", "ctlstm_s", "ctlstmwf_s"]

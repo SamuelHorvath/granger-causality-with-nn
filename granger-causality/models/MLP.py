@@ -9,7 +9,7 @@ from .utils import TrainableEltWiseLayer, activation_helper
 
 class CMLP(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, act='relu'):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, act='sigmoid'):
         super(CMLP, self).__init__()
 
         self.n_layers = n_layers
@@ -69,7 +69,7 @@ class CMLP(nn.Module):
 
 class CMLPFull(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu'):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='sigmoid'):
         super(CMLPFull, self).__init__()
         self.seq_len = seq_len
         self.input_size = input_size
@@ -101,7 +101,7 @@ class CMLPFull(nn.Module):
 
 class CMLPwFilter(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, act='relu'):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, act='sigmoid'):
         super(CMLPwFilter, self).__init__()
 
         self.n_layers = n_layers
@@ -181,7 +181,7 @@ class CMLPwFilter(nn.Module):
 
 class CMLPwFilterFull(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu'):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='sigmoid'):
         super(CMLPwFilterFull, self).__init__()
         self.seq_len = seq_len
         self.input_size = input_size
@@ -212,7 +212,7 @@ class CMLPwFilterFull(nn.Module):
 
 class LeKVAR(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='relu', mode=None):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, act='sigmoid', mode=None):
         super(LeKVAR, self).__init__()
 
         self.n_layers = n_layers
@@ -257,11 +257,11 @@ class LeKVAR(nn.Module):
             return out.reshape(shape)
 
         if self.mode == 'sq':
-            return input**2
+            return -2 + 1/2 * input**2
 
     def forward(self, input):
         out = self.kernel_forward(input)
-        out = self.fc(out.reshape(-1, self.seq_len * self.hidden_dim))
+        out = self.fc(out.reshape(-1, self.seq_len * self.input_size))
         return out
 
     def regularize(self, lam):
@@ -313,6 +313,17 @@ def var(input_size=10, seq_len=10):
 
 def lekvar(input_size=10, seq_len=10):
     return LeKVAR(input_size, seq_len, mode='nn')
+
+def cmlp_s(input_size=10, seq_len=10):
+    return CMLPFull(input_size, seq_len, n_layers=1)
+
+
+def cmlpwf_s(input_size=10, seq_len=10):
+    return CMLPwFilterFull(input_size, seq_len, n_layers=1)
+
+
+def lekvar_s(input_size=10, seq_len=10):
+    return LeKVAR(input_size, seq_len, mode='nn', n_layers=1)
 
 
 def sqvar(input_size=10, seq_len=10):

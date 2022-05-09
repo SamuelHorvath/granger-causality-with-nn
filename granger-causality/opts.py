@@ -35,7 +35,7 @@ def parse_args(args):
     parser.add_argument(
         "-b", "--batch-size",
         type=int,
-        default=128,
+        default=1024,
         help="Static batch size for local runs"
     )
     parser.add_argument(
@@ -126,7 +126,7 @@ def parse_args(args):
     parser.add_argument(
         "--gpu",
         type=str,
-        default="1",
+        default="0",
         help="Define on which GPU to run the model"
              " (comma-separated for multiple). If -1, use CPU."
     )

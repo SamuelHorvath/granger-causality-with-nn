@@ -17,6 +17,7 @@ from utils.utils import create_model_dir, create_metrics_dict, \
 from models import RNN_MODELS
 
 # os.environ["WANDB_API_KEY"] = 'INSERT KEY'
+# os.environ["CUDA_LAUNCH_BLOCKING"] = '1'
 
 
 def main(args):
@@ -59,16 +60,14 @@ def main(args):
     args.device = args.gpu[0] if type(args.gpu) == list else args.gpu
 
     # Load data sets
-    trainset, testset, GC = load_data(args.data_path, args.dataset,
-                                  args.seq_len, args.device)
+    trainset, testset, GC = load_data(args.data_path, args.dataset, args.seq_len)
 
-    # TODO: loaders needs to be fixed for num_workers > 1
     # It should work, it seems problem is only locally on my machine
     testloader = torch.utils.data.DataLoader(testset,
                                              batch_size=args.batch_size,
-                                             # num_workers=4,
+                                             num_workers=args.num_workers,
                                              shuffle=False,
-                                             # persistent_workers=True
+                                             persistent_workers=True
                                              )
     args.input_size = next(iter(testloader))[0].shape[-1]
 
@@ -76,9 +75,9 @@ def main(args):
         trainloader = torch.utils.data.DataLoader(
             trainset,
             batch_size=args.batch_size,
-            # num_workers=args.num_workers,
+            num_workers=args.num_workers,
             shuffle=True,
-            # persistent_workers=True
+            persistent_workers=True
         )
 
         init_and_train_model(args, trainloader, testloader, GC)
