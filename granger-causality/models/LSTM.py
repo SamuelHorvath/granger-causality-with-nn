@@ -10,7 +10,7 @@ from .utils import TrainableEltWiseLayer
 # for all the LSTM models
 # class CLSTM(nn.Module):
 #
-#     def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, **kwargs):
+#     def __init__(self, input_size=10, seq_len=10, hidden_dim=5, n_layers=2, output_size=1, **kwargs):
 #         super(CLSTM, self).__init__()
 #
 #         self.n_layers = n_layers
@@ -63,7 +63,7 @@ from .utils import TrainableEltWiseLayer
 
 class CTLSTM(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, lag_pen=False):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=5, n_layers=2, output_size=1, lag_pen=False):
         super(CTLSTM, self).__init__()
 
         self.n_layers = n_layers
@@ -136,7 +136,7 @@ class CTLSTM(nn.Module):
 
 class CTLSTMwFilter(nn.Module):
 
-    def __init__(self, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, output_size=1, lag_pen=False):
+    def __init__(self, input_size=10, seq_len=10, hidden_dim=5, n_layers=2, output_size=1, lag_pen=False):
         super(CTLSTMwFilter, self).__init__()
 
         self.n_layers = n_layers
@@ -218,7 +218,7 @@ class CTLSTMwFilter(nn.Module):
 
 class CMFull(nn.Module):
 
-    def __init__(self, model, input_size=10, seq_len=10, hidden_dim=10, n_layers=2, lag_pen=False):
+    def __init__(self, model, input_size=10, seq_len=10, hidden_dim=5, n_layers=2, lag_pen=False):
         super(CMFull, self).__init__()
         self.seq_len = seq_len
         self.input_size = input_size

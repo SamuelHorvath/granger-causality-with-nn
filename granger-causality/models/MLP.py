@@ -322,9 +322,5 @@ def cmlpwf_s(input_size=10, seq_len=10):
     return CMLPwFilterFull(input_size, seq_len, n_layers=1)
 
 
-def lekvar_s(input_size=10, seq_len=10):
-    return LeKVAR(input_size, seq_len, mode='nn', n_layers=1)
-
-
 def sqvar(input_size=10, seq_len=10):
     return LeKVAR(input_size, seq_len, mode='sq')
